@@ -13,17 +13,17 @@ library(Hmisc)      #the Harrell miscellaneous library for imputation
 library(GGally)     #the correlation grid
 #library(grid)
 
-#load data
-#School Quality Reports - New York City Department of Education (2014-2015)
-#code book: http://schools.nyc.gov/NR/rdonlyres/1B63FCE4-29D5-450F-8AF3-BB4CEA947CB1/0/HSFamilyGuide.pdf
+# load data
+# School Quality Reports - New York City Department of Education (2014-2015)
+# code book: http://schools.nyc.gov/NR/rdonlyres/1B63FCE4-29D5-450F-8AF3-BB4CEA947CB1/0/HSFamilyGuide.pdf
 
 fileUrl = "https://data.cityofnewyork.us/download/vrfr-9k4d/application%2Fvnd.ms-excel"
 download.file(fileUrl, destfile = "2015_School_Quality_Reports.xlsx", mode="wb")
 school_quality1 <- read.xlsx("2015_School_Quality_Reports.xlsx", sheet = 1, startRow = 2, colNames = TRUE)
 school_quality5 <- read.xlsx("2015_School_Quality_Reports.xlsx", sheet = 5, startRow = 2, colNames = TRUE)
 
-#transform the data
-#retaining only the columns relevant to analysis
+# transform the data
+# retaining only the columns relevant to analysis
 sheet_1 = school_quality1 %>%
   select(
     1, 2, 4, 12:17, 24:40
@@ -90,6 +90,7 @@ ggplot(SAT_summary_2015, aes(x=Avg.Total)) +
     parse = TRUE,
     hjust = 0
   )
+#make weighted average! weighted median?
 
 #violin plots ======================
 
@@ -128,7 +129,7 @@ ggpairs(
 
 #======largest discrepancies between sections================
 
-SAT_summary_2015_sections =
+SAT_summary_2015_sections <-
   SAT_summary_2015 %>%
   select(
     Name = School.Name.x,
@@ -265,3 +266,48 @@ ggplot(correlationdfsorted, aes(reorder(factor, value), value)) +
   coord_flip(ylim = c(-0.75, 0.75)) #+
 #theme(axis.text.x = element_text(angle = 90, hjust = 1))
 
+#some kind of PCA =====================
+
+
+X
+X
+X
+X
+X
+
+
+# location based analysis =====================
+
+#loading the location file
+directory = read.csv("HS_directory.csv")
+locations = directory[c("dbn","school_name", "boro", "city", "zip", "Location.1")]
+colnames(locations)[1] = "DBN"
+
+#extract the coordinates
+locations$coord <- gsub(".*\\((.*)\\).*", "\\1", locations$Location.1)
+locations$lon <- unlist(lapply(strsplit(as.character(locations$coord), ", "), "[", 2))
+locations$lat <- unlist(lapply(strsplit(as.character(locations$coord), ", "), "[", 1))
+locations$lon <- as.numeric(locations$lon)
+locations$lat <- as.numeric(locations$lat)
+
+#join to file
+SAT_summary_2015 <- inner_join(SAT_summary_2015, locations, by = "DBN")
+
+boros =
+  SAT_summary_2015 %>%
+  group_by(boro) %>%
+  summarize(average = mean(Avg.Total, na.rm = TRUE), count = n()) %>%
+  arrange(desc(count))
+
+avg = ggplot(boros, mapping = aes(x=boro, y=average)) +
+  geom_bar(stat = "identity", col = "white", fill = "steelblue") +
+  coord_flip(ylim=c(1000, 1500)) +
+  labs(title = "Public Schools SAT Scores By Borough", x = "", y = "Average SAT Score for School")
+
+count = ggplot(boros, mapping = aes(x=boro, y=count)) +
+  geom_bar(stat = "identity", col = "white", fill = "steelblue") +
+  coord_flip(ylim=c(0, 200)) +
+  labs(title = "Number of Public Schools SAT Scores In Borough", x = "", y = "Average SAT Score for School")
+
+grid.newpage()
+grid.draw(rbind(ggplotGrob(avg), ggplotGrob(count), size = "last"))
