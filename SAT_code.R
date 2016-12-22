@@ -53,10 +53,10 @@ SAT_summary_2015 = inner_join(sheet_5, sheet_1, by = "DBN")
 
 # As we can see, there are approximately X missing SAT scores (16.7% of the schools in the dataset).
 # These are missing because less than X students 
-# However, these are the dependant variable so we will not
-# impute the values. These are not missing completely at random (MCAR) becuase they depend on
+# However, these are the dependant variable so we will not impute the values. 
+# These are not missing completely at random (MCAR) becuase they depend on
 # whether a certain number of students took the test. They may be missing not at random (MNAR)
-# as a school with a lower number of students taking the test is more likely to have a lower
+# as a school with a lower number of students taking the test may be more likely to have a lower
 # score. See the correlation graph between score and number of students taking test - percentage
 # of students taking test
 
@@ -283,19 +283,42 @@ fa.parallel(SAT_summary_2015_complete2[,-c(1:2,7)],
             n.iter = 100) #Number of simulated analyses to perform.
 abline(h = 1) #Adding a horizontal line at 1.
 
-#The estimated weights for the factor scores are probably incorrect.  Try a different factor extraction method.
-# delete all the NA's
-#Parallel analysis suggests that the number of factors =  NA  and the number of components =  5 
-#Warning messages:
-#1: In cor.smooth(R) : Matrix was not positive definite, smoothing was done
+#just economic factors
+fa.parallel(SAT_summary_2015[,c(18:24)],
+            fa = "pc", #Display the eigenvalues for PCA.
+            n.iter = 100) #Number of simulated analyses to perform.
+abline(h = 1) #Adding a horizontal line at 1.
 
 pc_SAT = principal(SAT_summary_2015_complete2[,-c(1:2,7)], #The data in question.
                       nfactors = 2, #The number of PCs to extract.
                       rotate = "none")
+pc_SAT = principal(SAT_summary_2015[,c(18:24)], #The data in question.
+                   nfactors = 2, #The number of PCs to extract.
+                   rotate = "none")
 pc_SAT
 
 factor.plot(pc_SAT,
-            labels = colnames(SAT_summary_2015_complete2[,-c(1:2,7)]))
+            labels = colnames(SAT_summary_2015[,c(18:24)]))
+
+# GLM ==============
+
+glm.model = glm(Avg.Total ~ . 
+                - DBN 
+                - School.Name.x 
+                - School.Name.y 
+                - Avg.Math 
+                - Avg.Reading 
+                - Avg.Writing
+                - Average.Grade.8.English.Proficiency # unfairly high importance
+                - Average.Grade.8.Math.Proficiency # unfairly high importance
+                ,
+  data = SAT_summary_2015_complete
+)
+
+summary(glm.model)
+layout(matrix(c(1,2,3,4),2,2)) # 4 graphs/page 
+plot(glm.model)
+
 
 # location based analysis =====================
 
