@@ -11,6 +11,8 @@ library(VIM)        #for the visualization and imputation of missing values
 library(mice)       #multivariate imputation by chained equations library
 library(Hmisc)      #the Harrell miscellaneous library for imputation
 library(GGally)     #the correlation grid
+library(psych)      #Library that contains helpful PCA functions
+
 #library(grid)
 
 # load data
@@ -47,15 +49,20 @@ SAT_summary_2015 = inner_join(sheet_5, sheet_1, by = "DBN")
 
 # == imputation =================================
 
-#allowed to delete columns with missing?
-#see codebook on website for why some missing
+# see codebook on website for why some missing???????
 
+# As we can see, there are approximately X missing SAT scores (16.7% of the schools in the dataset).
+# These are missing because less than X students 
+# However, these are the dependant variable so we will not
+# impute the values. These are not missing completely at random (MCAR) becuase they depend on
+# whether a certain number of students took the test. They may be missing not at random (MNAR)
+# as a school with a lower number of students taking the test is more likely to have a lower
+# score. See the correlation graph between score and number of students taking test - percentage
+# of students taking test
 
 sapply(SAT_summary_2015, function(x) sum(is.na(x)))
 aggr(SAT_summary_2015[,c(3:7, 26:31)])  # visualization and imputation of missing values
 md.pattern(SAT_summary_2015)            # numerical analysis of missing values
-
-imputed.1nn = kNN(SAT_summary_2015, k = 1) #Imputing using 1NN.
 
 SAT_summary_2015_complete = SAT_summary_2015 %>% filter(Avg.Total != "NA")
 
@@ -267,14 +274,28 @@ ggplot(correlationdfsorted, aes(reorder(factor, value), value)) +
 #theme(axis.text.x = element_text(angle = 90, hjust = 1))
 
 #some kind of PCA =====================
+install.packages("GPArotation")
+library(GPArotation)
+                 
+#creating a scree plot with parallell analyses for choosing K
+fa.parallel(SAT_summary_2015_complete2[,-c(1:2,7)],
+            fa = "pc", #Display the eigenvalues for PCA.
+            n.iter = 100) #Number of simulated analyses to perform.
+abline(h = 1) #Adding a horizontal line at 1.
 
+#The estimated weights for the factor scores are probably incorrect.  Try a different factor extraction method.
+# delete all the NA's
+#Parallel analysis suggests that the number of factors =  NA  and the number of components =  5 
+#Warning messages:
+#1: In cor.smooth(R) : Matrix was not positive definite, smoothing was done
 
-X
-X
-X
-X
-X
+pc_SAT = principal(SAT_summary_2015_complete2[,-c(1:2,7)], #The data in question.
+                      nfactors = 2, #The number of PCs to extract.
+                      rotate = "none")
+pc_SAT
 
+factor.plot(pc_SAT,
+            labels = colnames(SAT_summary_2015_complete2[,-c(1:2,7)]))
 
 # location based analysis =====================
 
