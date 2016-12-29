@@ -3,7 +3,6 @@
 ### Data: www.
 ### Codebook: http://schools.nyc.gov/NR/rdonlyres/1B63FCE4-29D5-450F-8AF3-BB4CEA947CB1/0/HSFamilyGuide.pdf
 
-
 library(openxlsx)
 library(dplyr)
 library(ggplot2)
@@ -11,6 +10,7 @@ library(VIM)        #for the visualization and imputation of missing values
 library(mice)       #multivariate imputation by chained equations library
 library(Hmisc)      #the Harrell miscellaneous library for imputation
 library(GGally)     #the correlation grid
+library(corrplot)
 library(psych)      #Library that contains helpful PCA functions
 
 #library(grid)
@@ -229,7 +229,21 @@ ggplot(bottom, aes(x = reorder(School.Name.x, -Avg.Total), y = Avg.Writing)) +
   coord_flip(ylim=c(275, 500)) +
   labs(title = "Bottom 10% NYC Public Schools SAT Scores", x = "", y = "Average Writing SAT Score for School")
 
-#correlation of school characteristics to section scores =====================
+# correlation of school characteristics to section scores =====================
+
+#corrplot
+names(SAT_summary_2015_complete) = gsub("\\.", " ", names(SAT_summary_2015_complete))
+names(SAT_summary_2015_complete)[3] = "Average Math SAT Score"
+names(SAT_summary_2015_complete)[4] = "Average Reading SAT Score"
+names(SAT_summary_2015_complete)[5] = "Average Writing SAT Score"
+names(SAT_summary_2015_complete)[6] = "Average Total SAT Score"
+
+SAT.corr <- cor(SAT_summary_2015_complete[,-c(1,2,7,27,28,31)])
+diag(SAT.corr) <- NA   #remove diagonal
+
+corrplot(SAT.corr, method="circle", tl.cex = 0.6, tl.col = "black", tl.srt=45, order="hclust", type = "lower", na.label = " ")
+
+# names(SAT_summary_2015) <- names(SAT_summary_2015_complete)
 
 correlation_tot = sapply(SAT_summary_2015[complete.cases(SAT_summary_2015), -c(1:7)], function(x)
   cor(x, SAT_summary_2015[complete.cases(SAT_summary_2015), "Avg.Total"]))
@@ -258,13 +272,19 @@ correlationdf = data.frame(factor = correlation_tot$factor,
                            Avg.Writing = correlation_writing$Avg.Writing) 
 
 correlationdfsorted <- reshape2::melt(correlationdf[,c("factor","Avg.Total","Avg.Math", "Avg.Reading", "Avg.Writing")],id.vars = 1)
+correlationdf$factor <- names(SAT_summary_2015_complete[-c(1:7)])
+correlationdf$lab <- as.character(round(correlationdf$Avg.Total, 2))
+
 
 ggplot(correlationdf, aes(reorder(factor, Avg.Total), Avg.Total)) +
-  geom_bar(stat = "identity", fill = "steelblue") +
-  labs(title = "Correlation of School Characteristics To School's Average SAT Score",
+  geom_bar(stat = "identity", col="white", fill = "steelblue") +
+  labs(title = "Correlation of School Characteristics\nTo School's Average SAT Score",
        x = "", y = "Correlation") +
-  coord_flip(ylim = c(-0.75, 0.75)) #+
-#theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  coord_flip(ylim = c(-1, 1.1)) +
+  geom_text(aes(label=lab),vjust=0.5, hjust=ifelse(sort(correlationdf$lab,decreasing=F)>0,-0.2,1.2), position=position_dodge(width=0.9), size=2.5) +
+  theme(axis.title.y=element_text(margin=margin(0,15,0,0))) +
+  theme(axis.title.x=element_text(margin=margin(10,0,0,0))) +
+  theme(plot.title=element_text(margin=margin(0,0,15,0)))
 
 ggplot(correlationdfsorted, aes(reorder(factor, value), value)) +
   geom_bar(stat = "identity", aes(fill = variable), position = "dodge") +
@@ -273,7 +293,7 @@ ggplot(correlationdfsorted, aes(reorder(factor, value), value)) +
   coord_flip(ylim = c(-0.75, 0.75)) #+
 #theme(axis.text.x = element_text(angle = 90, hjust = 1))
 
-#some kind of PCA =====================
+# PCA =====================
 install.packages("GPArotation")
 library(GPArotation)
                  
