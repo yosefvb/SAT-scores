@@ -6,13 +6,17 @@
 library(openxlsx)
 library(dplyr)
 library(ggplot2)
+library(reshape2)
 library(VIM)        #for the visualization and imputation of missing values
 library(mice)       #multivariate imputation by chained equations library
 library(Hmisc)      #the Harrell miscellaneous library for imputation
 library(GGally)     #the correlation grid
 library(corrplot)
 library(psych)      #Library that contains helpful PCA functions
-
+library(car)        #advanced utilities for regression modeling
+library(relaimpo)   #relative variable imp for regression
+library(tree)
+library(randomForest)
 #library(grid)
 
 # load data
@@ -71,68 +75,84 @@ length(which(SAT_summary_2015$Avg.Math != "NA"))
 
 # graphs ------------------------------------------------------------------
 
+ggplot(SAT_summary_2015, aes(x=Avg.Math, y=Avg.Reading)) + stat_bin2d(bins=50)
 
 #graphs
 ggplot(SAT_summary_2015, aes(x=Avg.Total)) + 
-  geom_histogram(binwidth = 100, 
+  geom_histogram(binwidth = 40, 
                  col="white", 
                  fill="steelblue") + 
-  labs(title="NYC Public Schools SAT Score Histogram") +
-  labs(x="Average Score for School", y="Count") +
+  labs(title="Distribution of SAT Scores", subtitle="New York City Public Schools", x="Average Score for School", y="Total Count") +
   geom_vline(aes(xintercept=mean(Avg.Total, na.rm=T)),   # Ignore NA values for mean
-             color="darkgreen", linetype="dashed", size=1) +
+             color="darkgreen", linetype="dashed", size=0.8) +
   geom_text(
     mapping = aes(x2, y2, label = text2),
-    data = data.frame(x2 = 1290, y2 = 110, text2 = "mean[score]==1273"),
+    data = data.frame(x2 = 1290, y2 = 60, text2 = "mean[score]==1273"),
     color = I("darkgreen"),
     parse = TRUE,
     hjust = 0
   ) +
   geom_vline(aes(xintercept=median(Avg.Total, na.rm=T)),   # Ignore NA values for mean
-             color="purple", linetype="dashed", size=1) +
+             color="purple", linetype="dashed", size=0.8) +
   geom_text(
     mapping = aes(x2, y2, label = text3),
-    data = data.frame(x2 = 1244, y2 = 120, text3 = "median[score]==1227"),
+    data = data.frame(x2 = 1244, y2 = 65, text3 = "median[score]==1227"),
     color = I("purple"),
     parse = TRUE,
     hjust = 0
-  )
+  ) +
+  theme(axis.title.y=element_text(margin=margin(0,15,0,0))) +
+  theme(axis.title.x=element_text(margin=margin(10,0,0,0))) +
+  theme(plot.title=element_text(margin=margin(0,0,5,0),hjust = 0.5)) +
+  theme(plot.subtitle=element_text(margin=margin(0,0,10,0),hjust = 0.5))
 #make weighted average! weighted median?
 
-#violin plots ======================
+#violin and box plot ======================
 
 section_scores <- select(SAT_summary_2015, Avg.Math, Avg.Reading, Avg.Writing)
+names(section_scores) <- c("Math", "Reading", "Writing")
 section_scores <- reshape2::melt(section_scores, id.vars = NULL)
 section_scores <- filter(section_scores, value != "NA")
 means <- aggregate(value ~  variable, section_scores, mean)
 means[,2] <- round(means[,2])
 
 ggplot(section_scores, aes(x = variable, y = value, fill = variable)) + 
-  geom_violin() +
-  geom_boxplot(width = 0.3) +
+  geom_violin(color="steelblue",fill="steelblue",size=1) +
+  geom_boxplot(fill="steelblue",width = 0.3) +
   stat_summary(fun.y=mean, colour="darkblue", geom="point", 
-               shape=18, size=3, show.legend = FALSE) +             #find geom shape that looks like '-' instead of diamond?
+               shape="_", size=5, show.legend = FALSE) +  #shape=16, size 1
   geom_text(data = means, aes(label = value, y = value + 12)) +
-  labs(title = "Violin Plot Breakdown of Each SAT Section", x = "", y = "Section Score") +
-  theme(legend.position="none")
+  labs(title = "Breakdown of Each SAT Section", subtitle="Violin Plot with Boxplot",x = "", y = "Section Score") +
+  theme(legend.position="none") +
+  theme(axis.title.y=element_text(margin=margin(0,15,0,0))) +
+  theme(axis.title.x=element_text(margin=margin(10,0,0,0))) +
+  theme(plot.title=element_text(margin=margin(0,0,5,0),hjust = 0.5)) +
+  theme(plot.subtitle=element_text(margin=margin(0,0,10,0),hjust = 0.5))
+  
 #make weighted average! weighted median?
 
-#=====correlation between sections =================
+#correlation between sections =================
 
 #numerically
 cor(SAT_summary_2015[complete.cases(SAT_summary_2015), c("Avg.Math", "Avg.Reading", "Avg.Writing")],)
 
 #graphically with pair plot
+grid <- SAT_summary_2015[complete.cases(SAT_summary_2015), c("Avg.Math", "Avg.Reading", "Avg.Writing")]
+names(grid) <- c("Math", "Reading", "Writing")
+
 ggpairs(
-  SAT_summary_2015[complete.cases(SAT_summary_2015), c("Avg.Math", "Avg.Reading", "Avg.Writing")],
-  upper = list(continuous = wrap("cor", size = 10, color = "steelblue")), 
+  grid,
+  upper = list(continuous = wrap("cor", size = 5)), 
   lower = list(continuous = wrap("smooth", color = "steelblue")),
   diag = list(continuous = wrap("barDiag", bins = 100, color = "steelblue")),
-  axisLabels = 'show') +
+  axisLabels = 'show',
+  title="Correlation Between Sections") +
   theme(
     legend.position = "none",
     panel.grid.major = element_blank(),
-    axis.ticks = element_blank())
+    axis.ticks = element_blank()) +
+  theme(axis.title.y=element_text(margin=margin(0,15,0,0))) +
+  theme(axis.title.x=element_text(margin=margin(20,0,0,0)))
 
 #======largest discrepancies between sections================
 
@@ -174,16 +194,27 @@ SAT_summary_2015_sections %>%
 
 #==top schools============================================
 
-top <- # remove this and use dataset with all variables? then limit in graph to ones used
+top <-
   SAT_summary_2015 %>%
-  select(School.Name.x, Avg.Total, Avg.Math, Avg.Reading, Avg.Writing) %>%
+  select(School.Name.x,Avg.Math, Avg.Reading, Avg.Writing,  Avg.Total) %>%
   arrange(desc(Avg.Total)) %>%
   top_n(37)
+
+top.m <- top %>% select(-Avg.Total)
+names(top.m) <- c("School.Name.x", "Math", "Reading", "Writing")
+top.m <- melt(top.m, id.vars = "School.Name.x")
+top.m$variable <- factor(top.m$variable, levels = c("Writing", "Reading", "Math")) #switch order of legend
 
 ggplot(top, aes(x = reorder(School.Name.x, Avg.Total), y = Avg.Total)) +
   geom_bar(stat = "identity", col = "white", fill = "steelblue") +
   coord_flip(ylim=c(1400, 2200)) +
-  labs(title = "Top 10% NYC Public Schools SAT Scores", x = "", y = "Average SAT Score for School")
+  geom_text(aes(label=Avg.Total),vjust=0.3, hjust=-.2, position=position_dodge(width=0.9), size=2.5) +
+  labs(title = "Top SAT Scores", subtitle = "NYC Public Schools, Top 10%",
+       x = "", y = "Average SAT Score") +
+  theme(axis.title.y=element_text(margin=margin(0,15,0,0))) +
+  theme(axis.title.x=element_text(margin=margin(10,0,0,0))) +
+  theme(plot.title=element_text(margin=margin(0,0,5,0),hjust = 0.5)) +
+  theme(plot.subtitle=element_text(margin=margin(0,0,10,0),hjust = 0.5))
 
 ggplot(top, aes(x = reorder(School.Name.x, Avg.Total), y = Avg.Math)) +
   geom_bar(stat = "identity", col = "white", fill = "steelblue") +
@@ -200,14 +231,35 @@ ggplot(top, aes(x = reorder(School.Name.x, Avg.Total), y = Avg.Writing)) +
   coord_flip(ylim=c(475, 800)) +
   labs(title = "Top 10% NYC Public Schools SAT Scores", x = "", y = "Average Writing SAT Score for School")
 
+#stacked by section
+ggplot(top.m, aes(x = reorder(School.Name.x, value), y = value, fill=variable)) +
+  geom_bar(stat='identity',position = "fill") +
+  scale_fill_manual(values = c("brown1","brown3", "steelblue"),
+                    breaks = c("Math", "Reading", "Writing"),
+                    labels = c("Math", "Reading", "Writing")) +
+  coord_flip() +
+  labs(title = "SAT Score By Section", subtitle="NYC Public Schools, Top 10%", x = "", y = "") +
+  geom_text(aes(label=value), size=2,position = "fill",hjust = 2, vjust=0.3, color="white") +
+  # geom_hline(aes(yintercept=.6666), color="gray", linetype="dashed", size=0.4) +
+  # geom_hline(aes(yintercept=.3333), color="gray", linetype="dashed", size=0.4) +
+  theme(legend.position="top", legend.direction="horizontal", legend.title = element_blank()) +
+  theme(plot.title=element_text(margin=margin(0,0,5,0),hjust = 0.5)) +
+  theme(plot.subtitle=element_text(margin=margin(0,0,10,0),hjust = 0.5))
+
+
 #==bottom====================================
 
-bottom <- # remove this and use dataset with all variables? then limit in graph to ones used
+bottom <-
   SAT_summary_2015 %>%
-  select(School.Name.x, Avg.Total, Avg.Math, Avg.Reading, Avg.Writing) %>%
-  arrange(Avg.Total) %>%
+  select(School.Name.x, Avg.Math, Avg.Reading, Avg.Writing, Avg.Total) %>%
   filter(Avg.Total != "NA") %>%
+  arrange(Avg.Total) %>%
   top_n(-37)
+
+bottom.m <- bottom %>% select(-Avg.Total)
+names(bottom.m) <- c("School.Name.x", "Math", "Reading", "Writing")
+bottom.m <- melt(bottom.m, id.vars = "School.Name.x")
+bottom.m$variable <- factor(bottom.m$variable, levels = c("Writing", "Reading", "Math")) #switch legend order
 
 ggplot(bottom, aes(x = reorder(School.Name.x, -Avg.Total), y = Avg.Total)) +
   geom_bar(stat = "identity", col = "white", fill = "steelblue") +
@@ -228,6 +280,21 @@ ggplot(bottom, aes(x = reorder(School.Name.x, -Avg.Total), y = Avg.Writing)) +
   geom_bar(stat = "identity", col = "white", fill = "steelblue") +
   coord_flip(ylim=c(275, 500)) +
   labs(title = "Bottom 10% NYC Public Schools SAT Scores", x = "", y = "Average Writing SAT Score for School")
+
+#stacked by section
+ggplot(bottom.m, aes(x = reorder(School.Name.x, value), y = value, fill=variable)) +
+  geom_bar(stat='identity',position = "fill") +
+  scale_fill_manual(values = c("brown1","brown3", "steelblue"),
+                    breaks = c("Math", "Reading", "Writing"),
+                    labels = c("Math", "Reading", "Writing")) +
+  coord_flip() +
+  labs(title = "SAT Score By Section", subtitle="NYC Public Schools, Top 10%", x = "", y = "") +
+  geom_text(aes(label=value), size=2,position = "fill",hjust = 2, vjust=0.3, color="white") +
+  # geom_hline(aes(yintercept=.6666), color="gray", linetype="dashed", size=0.4) +
+  # geom_hline(aes(yintercept=.3333), color="gray", linetype="dashed", size=0.4) +
+  theme(legend.position="top", legend.direction="horizontal", legend.title = element_blank()) +
+  theme(plot.title=element_text(margin=margin(0,0,5,0),hjust = 0.5)) +
+  theme(plot.subtitle=element_text(margin=margin(0,0,10,0),hjust = 0.5))
 
 # correlation of school characteristics to section scores =====================
 
@@ -284,7 +351,7 @@ ggplot(correlationdf, aes(reorder(factor, Avg.Total), Avg.Total)) +
   geom_text(aes(label=lab),vjust=0.5, hjust=ifelse(sort(correlationdf$lab,decreasing=F)>0,-0.2,1.2), position=position_dodge(width=0.9), size=2.5) +
   theme(axis.title.y=element_text(margin=margin(0,15,0,0))) +
   theme(axis.title.x=element_text(margin=margin(10,0,0,0))) +
-  theme(plot.title=element_text(margin=margin(0,0,15,0)))
+  theme(plot.title=element_text(margin=margin(0,0,15,0),hjust = 0.5))
 
 ggplot(correlationdfsorted, aes(reorder(factor, value), value)) +
   geom_bar(stat = "identity", aes(fill = variable), position = "dodge") +
@@ -294,8 +361,8 @@ ggplot(correlationdfsorted, aes(reorder(factor, value), value)) +
 #theme(axis.text.x = element_text(angle = 90, hjust = 1))
 
 # PCA =====================
-install.packages("GPArotation")
-library(GPArotation)
+# install.packages("GPArotation")
+# library(GPArotation)
                  
 #creating a scree plot with parallell analyses for choosing K
 fa.parallel(SAT_summary_2015_complete2[,-c(1:2,7)],
@@ -304,40 +371,202 @@ fa.parallel(SAT_summary_2015_complete2[,-c(1:2,7)],
 abline(h = 1) #Adding a horizontal line at 1.
 
 #just economic factors
-fa.parallel(SAT_summary_2015[,c(18:24)],
+fa.parallel(SAT_summary_2015_complete2[,c(18:24)],
             fa = "pc", #Display the eigenvalues for PCA.
             n.iter = 100) #Number of simulated analyses to perform.
 abline(h = 1) #Adding a horizontal line at 1.
 
-pc_SAT = principal(SAT_summary_2015_complete2[,-c(1:2,7)], #The data in question.
+pc_SAT = principal(SAT_summary_2015_complete2[,-c(1,2,7)], #The data in question.
                       nfactors = 2, #The number of PCs to extract.
                       rotate = "none")
-pc_SAT = principal(SAT_summary_2015[,c(18:24)], #The data in question.
+pc_SAT = principal(SAT_summary_2015_complete2[,c(18:24)], #The data in question.
                    nfactors = 2, #The number of PCs to extract.
                    rotate = "none")
 pc_SAT
 
 factor.plot(pc_SAT,
-            labels = colnames(SAT_summary_2015[,c(18:24)]))
+            labels = colnames(SAT_summary_2015[,-c(1:2,7)]))
+factor.plot(pc_SAT,
+            labels = colnames(SAT_summary_2015_complete2[,c(18:24)]))
 
 # GLM ==============
 
-glm.model = glm(Avg.Total ~ . 
-                - DBN 
-                - School.Name.x 
-                - School.Name.y 
-                - Avg.Math 
-                - Avg.Reading 
-                - Avg.Writing
-                - Average.Grade.8.English.Proficiency # unfairly high importance
-                - Average.Grade.8.Math.Proficiency # unfairly high importance
-                ,
-  data = SAT_summary_2015_complete
-)
+SAT_summary_2015_complete_scaled = scale(SAT_summary_2015_complete[,-c(1:5,7)])
+SAT_summary_2015_complete_scaled = as.data.frame(SAT_summary_2015_complete_scaled)
+summary(SAT_summary_2015_complete_scaled)
 
-summary(glm.model)
-layout(matrix(c(1,2,3,4),2,2)) # 4 graphs/page 
-plot(glm.model)
+lm.model.scaled = lm(`Average Total SAT Score` ~ .
+                     # - `Average Grade 8 English Proficiency` # unfairly high importance
+                     # - `Average Grade 8 Math Proficiency` # unfairly high importance
+                     ,
+                     data = SAT_summary_2015_complete_scaled)
+summary(lm.model.scaled)
+
+lm.model = lm(`Average Total SAT Score` ~ . 
+                - DBN 
+                - `School Name x`
+                - `School Name y` 
+                - `Average Math SAT Score` 
+                - `Average Reading SAT Score` 
+                - `Average Writing SAT Score`
+                # - `Average Grade 8 English Proficiency` # unfairly high importance
+                # - `Average Grade 8 Math Proficiency` # unfairly high importance
+                ,
+              data = SAT_summary_2015_complete)
+
+summary(lm.model)
+vif(lm.model)
+av.Plots(lm.model)
+
+# layout(matrix(c(1,2,3,4),2,2)) # 4 graphs/page 
+# plot(glm.model)
+
+lm.relimp = calc.relimp(lm.model, type = c("lmg"), rela = TRUE)
+lm.scaled.relimp = calc.relimp(lm.model.scaled, type = c("lmg"), rela = TRUE)
+lmg = read.csv("lmg.csv", header = F, stringsAsFactors = F)
+lmg$V1 = trimws(lmg$V1)
+
+ggplot(lmg, aes(reorder(V1, V2), V2)) +
+  geom_bar(stat = "identity", col="white", fill = "steelblue") +
+  labs(title = "Variable Relative Importance", subtitle = "Shapley Value Regression",
+       x = "", y = "Relative importance (contribution percentage)") +
+  coord_flip(ylim = c(0,0.25)) +
+  geom_text(aes(label=paste0(round(V2,3)*100,"%")),vjust=0.5, hjust=-.2, position=position_dodge(width=0.9), size=2.5) +
+  theme(axis.title.y=element_text(margin=margin(0,15,0,0))) +
+  theme(axis.title.x=element_text(margin=margin(10,0,0,0))) +
+  theme(plot.title=element_text(margin=margin(0,0,5,0),hjust = 0.5)) +
+  theme(plot.subtitle=element_text(margin=margin(0,0,10,0),hjust = 0.5))
+
+# random forest =====================
+
+tree.SAT = tree(Avg.Total ~ .
+                - DBN
+                - School.Name.x
+                - School.Name.y
+                - Avg.Math
+                - Avg.Reading
+                - Avg.Writing
+                # - Average.Grade.8.Math.Proficiency
+                # - Average.Grade.8.English.Proficiency
+                ,
+                data = data.frame(SAT_summary_2015), 
+                subset = complete.cases(data.frame(SAT_summary_2015)))
+summary(tree.SAT)
+plot(tree.SAT, main = "hello")
+text(tree.SAT, pretty = 0)
+
+#cleaning data for tree formula
+SAT_summary_2015_complete2 <- SAT_summary_2015_complete
+names(SAT_summary_2015_complete2) <- gsub("-", "", names(SAT_summary_2015))
+SAT_summary_2015_complete2 <- SAT_summary_2015_complete2[complete.cases(SAT_summary_2015_complete2),]
+# temp <- names(SAT_summary_2015_complete2)
+# temp <- as.factor(temp)
+
+
+tree.SAT2 <- rpart(Avg.Total ~ Enrollment +
+                     Rigorous.Instruction..Percent.Positive +
+                     Collaborative.Teachers..Percent.Positive +
+                     Supportive.Environment..Percent.Positive +
+                     Effective.School.Leadership..Percent.Positive +
+                     Strong.FamilyCommunity.Ties..Percent.Positive +
+                     Trust..Percent.Positive +
+                     Average.Grade.8.English.Proficiency +
+                     Average.Grade.8.Math.Proficiency  +
+                     Percent.English.Language.Learners +
+                     Percent.Students.with.Disabilities +
+                     Percent.SelfContained  +
+                     Economic.Need.Index  +
+                     Percent.in.Temp.Housing..4yr +
+                     Percent.HRA.Eligible +
+                     Percent.Asian +
+                     Percent.Black +
+                     Percent.Hispanic +
+                     Percent.White +
+                     Years.of.principal.experience.at.this.school +
+                     Percent.of.teachers.with.3.or.more.years.of.experience +
+                     Student.Attendance.Rate +
+                     Percent.of.Students.Chronically.Absent +
+                     Teacher.Attendance.Rate
+                   ,
+                   method="anova",
+                   data = SAT_summary_2015_complete2
+                   )
+printcp(tree.SAT2)
+plotcp(tree.SAT2)
+plot(tree.SAT2, uniform=TRUE)
+text(tree.SAT2, use.n=TRUE, all=TRUE, cex=.8)
+library(rpart.plot)
+prp(tree.SAT2, type=1, extra=1)
+fancyRpartPlot(tree.SAT2)
+
+#random forest
+set.seed(0)
+rf.SAT = randomForest(Avg.Total ~ .
+                         - DBN
+                         - School.Name.x
+                         - School.Name.y
+                         - Avg.Math
+                         - Avg.Reading
+                         - Avg.Writing
+                         # - Average.Grade.8.Math.Proficiency
+                         # - Average.Grade.8.English.Proficiency
+                         , 
+                         data = data.frame(SAT_summary_2015), 
+                         subset = complete.cases(data.frame(SAT_summary_2015)),
+                         importance = TRUE)
+rf.SAT
+varImpPlot(rf.SAT, type = 1)
+importance(rf.SAT, type = 1)
+
+varimp = read.csv("varimp.csv", header = F)
+
+# varimp = as.data.frame(importance(rf.SAT, type = 1))
+# varimp = cbind(labels(varimp)[[1]], varimp[1:24,])
+# varimp = as.data.frame(varimp)
+varimp$V1 = gsub("\\.", " ", varimp$V1)
+varimp$V1 = trimws(varimp$V1)
+varimp$V1 = gsub("   ", " ", varimp$V1)
+# varimp$V2 = as.numeric(as.character(varimp$V2))
+
+
+ggplot(varimp, aes(reorder(V1, V2), V2)) +
+  geom_bar(stat = "identity", col="white", fill = "steelblue") +
+  labs(title = "Variable Relative Importance", subtitle = "Random Forest\n",
+       x = "", y = "") +
+  coord_flip(ylim = c(-3,25)) +
+  geom_text(aes(label=paste0(round(V2,1),"%")),vjust=0.5, hjust=ifelse(sort(varimp$V2, decreasing = F)>0,-0.2,1.1), position=position_dodge(width=0.9), size=2.5) +
+  theme(plot.title=element_text(hjust=0.5)) +
+  theme(plot.subtitle=element_text(hjust=0.5)) 
+  theme(plot.title=element_text(margin=margin(0,0,5,0),hjust = 0.5)) +
+  theme(plot.subtitle=element_text(margin=margin(0,0,10,0),hjust = 0.5))
+
+
+#Varying the number of variables used at each step of the random forest procedure.
+set.seed(0)
+oob.err = numeric(24)
+for (mtry in 1:24) {
+  fit = randomForest(Avg.Total ~ .
+                     - DBN
+                     - School.Name.x
+                     - School.Name.y
+                     - Avg.Math
+                     - Avg.Reading
+                     - Avg.Writing
+                     # - Average.Grade.8.Math.Proficiency
+                     # - Average.Grade.8.English.Proficiency
+                     ,
+                     data = data.frame(SAT_summary_2015), 
+                     subset = complete.cases(data.frame(SAT_summary_2015)),
+                     mtry = mtry)
+  oob.err[mtry] = fit$mse[500]
+  cat("We're performing iteration", mtry, "\n")
+}
+
+#Visualizing the OOB error.
+plot(1:24, oob.err, pch = 16, type = "b",
+     xlab = "Variables Considered at Each Split",
+     ylab = "OOB Mean Squared Error",
+     main = "Random Forest OOB Error Rates\nby # of Variables")
 
 
 # location based analysis =====================
